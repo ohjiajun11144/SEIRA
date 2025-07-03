@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "707033148196",
+    "project_id": "ears-65a14",
+    "storage_bucket": "ears-65a14.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:707033148196:android:9ab806a5acae49fca0e1b1",
+        "android_client_info": {
+          "package_name": "com.example.project1"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA3bfmScXDxVbwkSFy0YWGcykjv8h-qdJU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
