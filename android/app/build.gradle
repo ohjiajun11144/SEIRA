@@ -9,7 +9,7 @@ plugins {
 android {
     namespace = "com.example.project1"
     compileSdk = 35 //flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    // ndkVersion = flutter.ndkVersion
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_1_8
@@ -21,21 +21,24 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.example.project1"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = 23
-        targetSdk = 34 //flutter.targetSdkVersion
+        targetSdk = 35 //flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
+            // Use your own signing config for release (change debug to release if you have one)
             signingConfig = signingConfigs.debug
+
+            // Enable shrinking and obfuscation
+            minifyEnabled true
+            shrinkResources true
+
+            // Use ProGuard rules
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
 }
@@ -43,5 +46,6 @@ android {
 flutter {
     source = "../.."
 }
-//上面写完之后记得使用他
+
+// Google Services
 apply plugin: 'com.google.gms.google-services'

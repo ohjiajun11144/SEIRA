@@ -1,10 +1,18 @@
 import 'package:flutter/material.dart';
-import 'status.dart'; // Make sure this is your actual status page
+import 'package:url_launcher/url_launcher.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'status.dart';
+import 'package:android_intent_plus/android_intent.dart';
 
 class DepartmentSelectionPage extends StatefulWidget {
   final List<String> aiSuggestedDepartments;
+  final String reportId;
 
-  const DepartmentSelectionPage({super.key, required this.aiSuggestedDepartments});
+  const DepartmentSelectionPage({
+    super.key,
+    required this.aiSuggestedDepartments,
+    required this.reportId,
+  });
 
   @override
   State<DepartmentSelectionPage> createState() => _DepartmentSelectionPageState();
@@ -16,18 +24,86 @@ class _DepartmentSelectionPageState extends State<DepartmentSelectionPage> {
   bool isPoliceSelected = false;
   final TextEditingController _commentController = TextEditingController();
 
+  String? reportLocation;
+  String? reportDate;
+  String? reportTime;
+  String? imageDownloadUrl;
+  String? reportType;
+
   @override
   void initState() {
     super.initState();
-    // Preselect AI-suggested departments
-    if (widget.aiSuggestedDepartments.contains('Hospital')) {
-      isHospitalSelected = true;
+
+    final mappedDepartments = <String>{};
+
+    // AI label mapping for fire, accident, and snake
+    for (var type in widget.aiSuggestedDepartments) {
+      switch (type.toLowerCase()) {
+        case 'fire':
+        case 'snake':
+          mappedDepartments.add('Fire Station');
+          break;
+        case 'accident':
+          mappedDepartments.add('Hospital');
+          mappedDepartments.add('Police');
+          break;
+        default:
+          break;
+      }
     }
-    if (widget.aiSuggestedDepartments.contains('Fire Station')) {
-      isFireStationSelected = true;
+
+    isHospitalSelected = mappedDepartments.contains('Hospital');
+    isFireStationSelected = mappedDepartments.contains('Fire Station');
+    isPoliceSelected = mappedDepartments.contains('Police');
+
+    _loadReportDetails();
+  }
+
+  Future<void> _loadReportDetails() async {
+    final doc = await FirebaseFirestore.instance.collection('reports').doc(widget.reportId).get();
+    if (doc.exists) {
+      setState(() {
+        reportLocation = doc['location'] ?? 'Unknown';
+        reportDate = doc['date'] ?? '';
+        reportTime = doc['time'] ?? '';
+        imageDownloadUrl = doc['image_url'] ?? '';
+        reportType = doc['type'] ?? 'Incident';
+      });
     }
-    if (widget.aiSuggestedDepartments.contains('Police')) {
-      isPoliceSelected = true;
+  }
+
+  Future<void> sendToWhatsApp({
+    required String phoneNumber,
+    required String type,
+    required String location,
+    required String date,
+    required String time,
+    required String imageUrl,
+  }) async {
+    final message = Uri.encodeComponent(
+      "📣 New Report Received!\n"
+          "Type: $type\n"
+          "Location: $location\n"
+          "Date: $date\n"
+          "Time: $time\n"
+          "View Image: $imageUrl",
+    );
+
+    final url = "https://wa.me/$phoneNumber?text=$message";
+
+    final intent = AndroidIntent(
+      action: 'action_view',
+      data: url,
+      package: "com.whatsapp",
+    );
+
+    try {
+      await intent.launch();
+    } catch (e) {
+      debugPrint("⚠️ WhatsApp launch error: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Can't Open WhatsApp"), backgroundColor: Colors.red),
+      );
     }
   }
 
@@ -36,13 +112,10 @@ class _DepartmentSelectionPageState extends State<DepartmentSelectionPage> {
     return Scaffold(
       body: Stack(
         children: [
-          // Background
           SizedBox.expand(
-            child: Image.asset('assets/image/background.png', fit: BoxFit.cover),
+            child: Image.asset('assets/image/background.jpg', fit: BoxFit.cover),
           ),
           Container(color: Colors.black.withOpacity(0.3)),
-
-          // Content
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(16.0),
@@ -53,13 +126,11 @@ class _DepartmentSelectionPageState extends State<DepartmentSelectionPage> {
                     style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white),
                   ),
                   const SizedBox(height: 20),
-
                   const Text(
                     "Based on your photo, we suggest contacting:",
                     style: TextStyle(fontSize: 18, color: Colors.white70),
                   ),
                   const SizedBox(height: 8),
-
                   Wrap(
                     spacing: 8,
                     children: widget.aiSuggestedDepartments.map((dept) {
@@ -71,7 +142,6 @@ class _DepartmentSelectionPageState extends State<DepartmentSelectionPage> {
                     }).toList(),
                   ),
                   const SizedBox(height: 20),
-
                   _buildDeptTile('Hospital', Icons.local_hospital, isHospitalSelected, () {
                     setState(() => isHospitalSelected = !isHospitalSelected);
                   }),
@@ -82,7 +152,6 @@ class _DepartmentSelectionPageState extends State<DepartmentSelectionPage> {
                     setState(() => isPoliceSelected = !isPoliceSelected);
                   }),
                   const SizedBox(height: 20),
-
                   TextField(
                     controller: _commentController,
                     maxLines: 3,
@@ -94,7 +163,6 @@ class _DepartmentSelectionPageState extends State<DepartmentSelectionPage> {
                     ),
                   ),
                   const SizedBox(height: 30),
-
                   ElevatedButton(
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.black,
@@ -136,32 +204,59 @@ class _DepartmentSelectionPageState extends State<DepartmentSelectionPage> {
     );
   }
 
-  void _submitReport() {
+  void _submitReport() async {
     List<String> selected = [];
     if (isHospitalSelected) selected.add('Hospital');
     if (isFireStationSelected) selected.add('Fire Station');
     if (isPoliceSelected) selected.add('Police');
 
-    String comment = _commentController.text;
+    final String selectedString = selected.join(', ');
 
-    // TODO: Save data to backend or Firebase here
+    try {
+      await FirebaseFirestore.instance.collection('reports').doc(widget.reportId).update({
+        'assigned_to': selected,
+        'handledBy': selectedString,
+        'description': _commentController.text,
+        'status': 'received',
+      });
 
-    // Show success message
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text("Report submitted successfully"),
-        backgroundColor: Colors.green,
-        duration: Duration(seconds: 2),
-      ),
-    );
+      if (reportType != null &&
+          reportLocation != null &&
+          reportDate != null &&
+          reportTime != null &&
+          imageDownloadUrl != null) {
+        await sendToWhatsApp(
+          phoneNumber: '601158517692',
+          type: reportType!,
+          location: reportLocation!,
+          date: reportDate!,
+          time: reportTime!,
+          imageUrl: imageDownloadUrl!,
+        );
+      }
 
-    // Delay and redirect to Status Page
-    Future.delayed(const Duration(seconds: 2), () {
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (_) => const StatusPage()),
-            (route) => false, // Clear all previous pages
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Report submitted successfully"),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 2),
+        ),
       );
-    });
+
+      Future.delayed(const Duration(seconds: 2), () {
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (_) => const StatusPage()),
+              (route) => false,
+        );
+      });
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("❌ Failed to submit report: $e"),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 }

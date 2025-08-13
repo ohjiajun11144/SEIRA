@@ -1,3 +1,5 @@
+// main.dart
+//confirm
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'dart:io';
@@ -6,156 +8,255 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:project1/screens/login_screen.dart';
 import 'services/report_service.dart';
-import 'services/report_dispatcher.dart';  //导入派发逻辑的文件
+import 'services/report_dispatcher.dart';
+import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:android_intent_plus/android_intent.dart';
+import 'services/ai_model_service.dart';
+import 'screens/theme_provider.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'screens/settings.dart';  // Your settings page
 
-
-Future<void> main() async {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await Firebase.initializeApp();
+  try {
+    await Firebase.initializeApp();
+    print("✅ Firebase initialized successfully");
+  } catch (e) {
+    print("❌ Firebase initialization failed: $e");
+  }
 
+  try {
+    await AIModelService.loadModel();
+    print("✅ AI Model loaded successfully");
+  } catch (e) {
+    print("❌ AI Model loading failed: $e");
+  }
 
-  runApp(const MyApp());
+  runApp(
+    ChangeNotifierProvider(
+      create: (_) => ThemeProvider(),
+      child: const MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+
     return MaterialApp(
       title: 'Flutter Demo',
-      theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-        useMaterial3: true,
+      themeMode: themeProvider.themeMode,
+      theme: ThemeData.light().copyWith(
+        colorScheme: ColorScheme.light(
+          primary: Colors.deepPurple,
+          onPrimary: Colors.white,
+          background: Colors.white,
+          onBackground: Colors.black,
+          surface: Colors.white,
+          onSurface: Colors.black,
+        ),
+        textTheme: const TextTheme(
+          bodyLarge: TextStyle(color: Colors.black),
+          bodyMedium: TextStyle(color: Colors.black),
+          titleLarge: TextStyle(color: Colors.black),
+          titleMedium: TextStyle(color: Colors.black),
+        ),
+      ),
+      darkTheme: ThemeData.dark().copyWith(
+        colorScheme: ColorScheme.dark(
+          primary: Colors.deepPurple,
+          onPrimary: Colors.white,
+          background: Colors.grey[900]!,
+          onBackground: Colors.white,
+          surface: Colors.grey[800]!,
+          onSurface: Colors.white,
+        ),
+        textTheme: const TextTheme(
+          bodyLarge: TextStyle(color: Colors.white),
+          bodyMedium: TextStyle(color: Colors.white),
+          titleLarge: TextStyle(color: Colors.white),
+          titleMedium: TextStyle(color: Colors.white),
+        ),
       ),
       home: const LoginScreen(),
     );
   }
 }
 
+// =================== Settings Page ===================
 
-
-
-class UploadPage extends StatefulWidget {
-  const UploadPage({super.key});
+class SettingsPage extends StatefulWidget {
+  const SettingsPage({super.key});
 
   @override
-  State<UploadPage> createState() => _UploadPageState();
+  State<SettingsPage> createState() => _SettingsPageState();
 }
 
-class _UploadPageState extends State<UploadPage> {
-  DocumentReference? _latestReportRef;
-  File? _image;
-  bool _uploading = false;
+class _SettingsPageState extends State<SettingsPage> {
+  String selectedLanguage = 'English';
+  bool notificationsEnabled = true;
 
-  Future<void> _pickAndUploadImage() async {
-    final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(source: ImageSource.camera);
-
-    if (pickedFile == null) return;
-
-    setState(() {
-
-
-      _image = File(pickedFile.path);
-      _uploading = true;
-    });
-
-    try {
-      final reportService = ReportService();     //zheligaiguo follow my reportservice.dart
-      _latestReportRef = await reportService.uploadReport(
-        imageFile: _image!,
-        category: 'fire', // 先写死分类，等 AI 同学代码做好再自动填
-
-      );
-      final dispatcher = ReportDispatcher();
-      await dispatcher.dispatchReport(ReportCategory.fire); // 传入分类
-
-
-
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("✅ 上传成功，资料已保存")),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("❌ 上传失败: $e")),
-      );
-    }
-
-    setState(() {
-      _uploading = false;
-    });
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
   }
 
+  Future<void> _loadSettings() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    setState(() {
+      selectedLanguage = prefs.getString('selectedLanguage') ?? 'English';
+      notificationsEnabled = prefs.getBool('notificationsEnabled') ?? true;
+    });
+
+    final isDark = prefs.getBool('darkThemeEnabled') ?? false;
+    final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+    themeProvider.toggleTheme(isDark);
+  }
+
+  Future<void> _saveSettings() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setString('selectedLanguage', selectedLanguage);
+    await prefs.setBool('notificationsEnabled', notificationsEnabled);
+    await prefs.setBool(
+        'darkThemeEnabled', Provider.of<ThemeProvider>(context, listen: false).isDarkMode);
+  }
+
+  void _onLanguageChanged(String? value) {
+    if (value != null) {
+      setState(() {
+        selectedLanguage = value;
+      });
+      _saveSettings();
+    }
+  }
+
+  void _onNotificationChanged(bool value) {
+    setState(() {
+      notificationsEnabled = value;
+    });
+    _saveSettings();
+  }
+
+  void _onDarkThemeChanged(bool value) {
+    Provider.of<ThemeProvider>(context, listen: false).toggleTheme(value);
+    _saveSettings();
+  }
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Provider.of<ThemeProvider>(context).isDarkMode;
+
     return Scaffold(
-      appBar: AppBar(title: const Text("拍照上传")),
-      body: Center(
-        child: _uploading
-            ? const CircularProgressIndicator()
-            : Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [            ElevatedButton(
-            onPressed: () async {
-              final dispatcher = ReportDispatcher();
-
-
-              await dispatcher.markReportAsReceived(_latestReportRef!);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('✅ 状态已设为 received')),
-              );
-            },
-            child: Text("测试: 设为 received"),
+      body: Stack(
+        children: [
+          SizedBox.expand(
+            child: Image.asset(
+              'assets/image/background.jpg',
+              fit: BoxFit.cover,
+            ),
           ),
-            ElevatedButton(
-              onPressed: () async {
-                if (_latestReportRef == null) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('⚠️ 请先上传照片')),
-                  );
-                  return;
-                }
+          Container(color: Colors.black.withOpacity(0.3)),
 
-                final dispatcher = ReportDispatcher();
-                await dispatcher.markReportAsCompleted(_latestReportRef!);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('✅ 状态已设为 completed')),
-                );
-              },
-              child: const Text("测试: 设为 completed"),
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: SingleChildScrollView(
+                child: Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? Colors.grey[850]?.withOpacity(0.95)
+                        : Colors.white.withOpacity(0.95),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: isDark ? Colors.grey.shade700 : Colors.grey.shade400,
+                      width: 2,
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Center(
+                        child: Text(
+                          'Settings',
+                          style: TextStyle(
+                            fontSize: 28,
+                            fontWeight: FontWeight.bold,
+                            color: isDark ? Colors.white : Colors.black,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 30),
+
+                      Text(
+                        'Language',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 18,
+                            color: isDark ? Colors.white : Colors.black),
+                      ),
+                      const SizedBox(height: 10),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        decoration: BoxDecoration(
+                          color: isDark ? Colors.grey[700] : Colors.grey[100],
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                              color: isDark ? Colors.grey.shade700 : Colors.grey.shade400),
+                        ),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<String>(
+                            value: selectedLanguage,
+                            icon: Icon(Icons.arrow_drop_down,
+                                color: isDark ? Colors.white : Colors.black),
+                            dropdownColor: isDark ? Colors.grey[800] : Colors.white,
+                            items: const [
+                              DropdownMenuItem(value: 'English', child: Text('English')),
+                              DropdownMenuItem(value: 'Malay', child: Text('Malay')),
+                              DropdownMenuItem(value: 'Chinese', child: Text('Chinese')),
+                            ],
+                            onChanged: _onLanguageChanged,
+                            style: TextStyle(color: isDark ? Colors.white : Colors.black),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 30),
+
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(
+                          'Enable Notifications',
+                          style: TextStyle(color: isDark ? Colors.white : Colors.black),
+                        ),
+                        value: notificationsEnabled,
+                        onChanged: _onNotificationChanged,
+                      ),
+                      const SizedBox(height: 10),
+
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(
+                          'Enable Dark Theme',
+                          style: TextStyle(color: isDark ? Colors.white : Colors.black),
+                        ),
+                        value: isDark,
+                        onChanged: _onDarkThemeChanged,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
-
-
-            _image != null
-                ? Image.file(_image!, height: 200)
-                : const Icon(Icons.camera_alt, size: 100),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: _pickAndUploadImage,
-              child: const Text("拍照并上传"),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

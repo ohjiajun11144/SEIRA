@@ -10,69 +10,123 @@ class ForgetPassword extends StatefulWidget {
 
 class _ForgetPasswordState extends State<ForgetPassword> {
   final TextEditingController emailController = TextEditingController();
+  bool emailError = false;
+  bool isSending = false;
 
-  Future<void> resetPassword() async {
-    final email = emailController.text.trim();
+  Future<void> sendResetEmail() async {
+    setState(() {
+      emailError = emailController.text.isEmpty;
+    });
 
-    if (email.isEmpty) {
+    if (emailError) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("⚠️ 请输入邮箱")),
+        const SnackBar(
+          content: Text('Please enter your email address'),
+          backgroundColor: Colors.red,
+        ),
       );
       return;
     }
 
+    setState(() {
+      isSending = true;
+    });
+
     try {
-      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+      await FirebaseAuth.instance
+          .sendPasswordResetEmail(email: emailController.text.trim());
+
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("✅ 重设密码邮件已发送，请检查你的邮箱")),
+        const SnackBar(
+          content: Text('✅ Password reset email sent! Check your Gmail inbox'),
+          backgroundColor: Colors.green,
+        ),
       );
-      Navigator.pop(context); // 返回登录页面
+
+      Navigator.pop(context); // Go back to login or previous page
     } on FirebaseAuthException catch (e) {
-      String message = "发送失败，请检查邮箱是否正确";
-
-      if (e.code == 'user-not-found') {
-        message = '⚠️ 没有这个邮箱注册的账号';
-      }
-
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
+        SnackBar(
+          content: Text("❌ Error: ${e.message}"),
+          backgroundColor: Colors.red,
+        ),
       );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("❌ 出错了: $e")),
-      );
+    } finally {
+      setState(() {
+        isSending = false;
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("重设密码")),
-      body: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            const Text(
-              "请输入你的注册邮箱，我们会发送重设密码的链接。",
-              style: TextStyle(fontSize: 16),
+      body: Stack(
+        children: [
+          SizedBox.expand(
+            child: Image.asset(
+              'assets/image/background.jpg',
+              fit: BoxFit.cover,
             ),
-            const SizedBox(height: 20),
-            TextField(
-              controller: emailController,
-              decoration: const InputDecoration(
-                labelText: "邮箱",
-                prefixIcon: Icon(Icons.email),
-                border: OutlineInputBorder(),
+          ),
+          Container(color: Colors.black.withOpacity(0.3)),
+          Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.grey.shade400, width: 2),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      'Reset Password',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text('Gmail Address', style: TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: emailController,
+                      keyboardType: TextInputType.emailAddress,
+                      decoration: InputDecoration(
+                        prefixIcon: const Icon(Icons.email),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                        errorText: emailError ? 'Please enter your email' : null,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    SizedBox(
+                      width: 200,
+                      child: ElevatedButton(
+                        onPressed: isSending ? null : sendResetEmail,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color.fromRGBO(227, 172, 180, 1),
+                        ),
+                        child: isSending
+                            ? const CircularProgressIndicator(color: Colors.white)
+                            : const Text(
+                          'Send Reset Email',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              keyboardType: TextInputType.emailAddress,
             ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: resetPassword,
-              child: const Text("发送重设密码邮件"),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
